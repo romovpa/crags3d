@@ -1,0 +1,285 @@
+
+<!doctype html>
+<html lang='en'>
+	<head>
+		<title>Crags3D Viewer</title>
+		<meta charset='utf-8'>
+		<meta name='viewport' content='width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0'>
+		<style>
+			body {
+				background:#000;
+				color: #eee;
+				padding:0;
+				margin:0;
+				font-weight:bold;
+				overflow:hidden;
+
+				font-family:Monospace;
+				font-size:14px;
+				text-align:center;
+			}
+
+			b { color: cyan; }
+
+			#progress_text { color: lightgray; }
+
+			#viewport {
+				position: absolute;
+				width: 100%;
+				height: 100%;
+				background: #1b1c1e;
+				background-image: linear-gradient(#7d8fa3, #1b1c1e);
+			}
+			
+			#info {
+				color: #fff;
+				position: absolute;
+				top: 10px;
+				width: 100%;
+				text-align: center;
+				z-index: 100;
+				display:block;
+			}
+
+			#stats { position: absolute; top:0; left: 0 }
+			#stats #fps { background: transparent !important }
+			#stats #fps #fpsText { color: #aaa !important }
+			#stats #fps #fpsGraph { display: none }
+
+			#debug_panel {
+				display: none;
+
+				position: absolute; 
+			    bottom: 0;
+				left: 0;
+				width: 200px;
+				height: 200px;
+
+				background-color: white;
+
+				color: black;
+
+				vertical-align: bottom;
+
+				border: 3px solid #73AD21;
+			}
+
+			a { color: orange }
+		</style>
+
+		<script src="//code.jquery.com/jquery-1.12.0.min.js"></script>
+		<script src='js/three.min.js'></script>
+		<script src='js/controls/OrbitControls.js'></script>
+		<script src="js/controls/FlyControls.js"></script>
+		<script src='js/Detector.js'></script>
+		<script src="js/loaders/DDSLoader.js"></script>
+		<script src="js/loaders/MTLLoader.js"></script>
+		<script src="js/loaders/OBJMTLLoader.js"></script>
+		<script src='js/libs/stats.min.js'></script>
+		<script src='js/libs/require.js'></script>
+
+	</head>
+	<body>
+		<div id="info">
+		<a id="parus_btn" href="#parus">Parus</a> | <a id="rock_btn" href="#rock">Rock</a> | <a id="barrel_btn" href="#barrel">Barrel</a> <br/>
+		<b>WASD</b> move, <b>R|F</b> up | down, <b>Q|E</b> roll, <b>up|down</b> pitch, <b>left|right</b> yaw<br/>
+		<div id="progress_text"></div>
+		</div>
+		
+		<div id='viewport'></div>
+
+		<div id='debug_panel'>Hellow, world!</div>
+
+		<script>
+			
+			if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
+
+			requirejs.config( { baseUrl: 'js/libs' } );
+
+			var container, scene, current_object, camera, renderer, controls, stats;
+			var mouse, raycaster, hover_intersects, last_click_intersects;
+			var clock = new THREE.Clock();
+
+			function render() {
+	            var delta = clock.getDelta();
+	            controls.update(delta);
+	            renderer.clear();
+	            // render using requestAnimationFrame
+	            requestAnimationFrame(render);
+	            renderer.render(scene, camera)
+	            stats.update();
+			}
+
+			function threePointLight() {
+
+				var directionalLight = new THREE.DirectionalLight( 0xb8b8b8 );
+				directionalLight.position.set(1, 1, 1).normalize();
+				directionalLight.intensity = 1.0;
+				scene.add( directionalLight );
+
+				directionalLight = new THREE.DirectionalLight( 0xb8b8b8 );
+				directionalLight.position.set(-1, 0.6, 0.5).normalize();
+				directionalLight.intensity = 0.5;
+				scene.add(directionalLight);
+
+				directionalLight = new THREE.DirectionalLight();
+				directionalLight.position.set(-0.3, 0.6, -0.8).normalize( 0xb8b8b8 );
+				directionalLight.intensity = 0.45;
+				scene.add(directionalLight);
+
+				var ambientLight = new THREE.AmbientLight( 0x404040 ); // soft white light
+				scene.add( ambientLight );
+
+			}
+
+			function loadScene(object_name) {
+
+				//var loader = new THREE.ObjectLoader();
+				//setupScene( loader.parse( decoded ) );
+
+				/*var object_name = window.location.hash.substring(1);
+				if (object_name == "") {
+					object_name = "parus";
+				}*/
+
+				console.log('Loading scene: ' + object_name)
+
+				for (var i = scene.children.length - 1; i >= 0; i--) {
+					obj = scene.children[i];
+					scene.remove(obj);
+				}
+
+				scene.add( new THREE.GridHelper( 10, 2.5 ) );
+
+				var onProgress = function ( xhr ) {
+					if ( xhr.lengthComputable ) {
+						var percentComplete = xhr.loaded / xhr.total * 100;
+						console.log( Math.round(percentComplete, 2) + '% downloaded' );
+						$('#progress_text').text(Math.round(percentComplete, 2) + '% downloaded');
+					}
+				};
+
+				var onError = function ( xhr ) {
+					console.log('Error');
+					console.log(xhr);
+				};
+
+				var loader = new THREE.OBJMTLLoader();
+				loader.crossOrigin = '';
+				loader.load( 'objects/' + object_name + '/mesh.obj', 'objects/' + object_name + '/mesh.mtl', function ( object ) {
+					current_object = object;
+
+					object.position.y = 0;
+
+					var xScale = 0.05;
+					object.scale.x = object.scale.y = object.scale.z = xScale;
+
+					if (object_name == "parus" || object_name == "rock") {
+						object.position.x = 0.1;
+						object.position.y = 0.5;
+						object.position.z = 0.0;
+
+						object.rotation.x = -1.9;
+						object.rotation.y = 0.0;
+						object.rotation.z = 0.0;
+					}
+
+					scene.add( object );
+					threePointLight();
+					render();
+				}, onProgress, onError );
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = container.offsetWidth / container.offsetHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				render();
+
+			}
+
+			function onDocumentMouseMove( event ) {
+				event.preventDefault();
+				mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+				mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+			}
+
+			function onClick( event ) {
+				raycaster.setFromCamera( mouse, camera );
+				intersects = raycaster.intersectObjects( current_object.children );
+				nearest = null;
+				for (var i = 0; i < intersects.length; i++) {
+					if (!nearest || intersects[i].distance < nearest.distance)
+						nearest = intersects[i];
+				}
+				console.log('Click: ', nearest);
+			}
+
+			function init() {
+
+				// renderer
+				container = document.getElementById('viewport');
+				renderer = new THREE.WebGLRenderer( { antialias: true, alpha: true	} );
+				renderer.setClearColor( 0x000000, 0 );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				container.appendChild( renderer.domElement );
+
+				// scene
+				scene = new THREE.Scene();
+
+				var aspect = container.offsetWidth / container.offsetHeight;
+				var target = new THREE.Vector3( 0, 1, 0 );
+
+				// camera
+				camera = new THREE.PerspectiveCamera( 60, aspect, 0.01, 50 );
+				camera.position.x = 0.27;
+				camera.position.y = 1.54;
+				camera.position.z = 2.30;
+				camera.lookAt( target );
+				camera.updateProjectionMatrix();
+
+				// control
+				/*var orbit = new THREE.OrbitControls( camera, container );
+				orbit.addEventListener( 'change', render );
+				orbit.target = target;*/
+
+				controls = new THREE.FlyControls( camera );
+				controls.movementSpeed = 0.3;
+				controls.domElement = container;
+				controls.rollSpeed = Math.PI / 24;
+				controls.autoForward = false;
+				controls.dragToLook = true;
+
+				// interactive
+				raycaster = new THREE.Raycaster();
+				mouse = new THREE.Vector2();
+
+				window.addEventListener( 'resize', onWindowResize, false );
+				document.addEventListener( 'mousemove', onDocumentMouseMove, false );
+				document.addEventListener( 'click', onClick, false );
+
+				var object_name = window.location.hash.substring(1);
+				if (object_name == "") {
+					object_name = "parus";
+				}
+				loadScene(object_name);
+
+				stats = new Stats();
+				container.appendChild( stats.domElement );
+
+			}
+
+			init();
+
+			$('#parus_btn').click(function() { loadScene('parus'); } );
+			$('#rock_btn').click(function() { loadScene('rock'); } );
+			$('#barrel_btn').click(function() { loadScene('barrel'); } );
+
+		</script>
+
+	</body>
+</html>
